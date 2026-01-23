@@ -5,7 +5,7 @@ import type { registry } from "@/rivet/registry";
 import { useState } from "react";
 
 export const { useActor } = createRivetKit<typeof registry>(
-    process.env.NEXT_PUBLIC_RIVET_ENDPOINT ?? "http://localhost:4242/api/rivet",
+    process.env.NEXT_PUBLIC_RIVET_ENDPOINT!,
 );
 
 export function Counter() {
