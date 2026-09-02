@@ -4,11 +4,15 @@ export interface DemoSession {
   expiresAt: number;
 }
 
-export type DemoSessionLoader = (forceRefresh?: boolean) => Promise<DemoSession>;
+export type DemoSessionLoader = (
+  forceRefresh?: boolean,
+  signal?: AbortSignal,
+) => Promise<DemoSession>;
 export type Clock = () => number;
 
 const SESSION_REFRESH_MARGIN_MS = 60_000;
 const SESSION_REFRESH_MIN_DELAY_MS = 1_000;
+const SESSION_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Shares one session request while replacing the cached session after expiry.
@@ -22,6 +26,7 @@ export class DemoSessionCache {
   constructor(
     private readonly load: DemoSessionLoader,
     private readonly now: Clock = Date.now,
+    private readonly requestTimeoutMs = SESSION_REQUEST_TIMEOUT_MS,
   ) {}
 
   get(forceRefresh = false): Promise<DemoSession> {
@@ -34,10 +39,28 @@ export class DemoSessionCache {
     }
     if (this.inFlight) return this.inFlight;
 
-    const request = this.load(forceRefresh).then((session) => {
-      this.cached = session;
-      return session;
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const load = Promise.resolve().then(() =>
+      this.load(forceRefresh, controller.signal),
+    );
+    const timeoutError = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error("demo session request timed out"));
+      }, this.requestTimeoutMs);
     });
+    const request = Promise.race([load, timeoutError]).then(
+      (session) => {
+        if (timeout) clearTimeout(timeout);
+        this.cached = session;
+        return session;
+      },
+      (error: unknown) => {
+        if (timeout) clearTimeout(timeout);
+        throw error;
+      },
+    );
     this.inFlight = request;
     void request.then(
       () => this.clear(request),
@@ -63,12 +86,14 @@ export function sessionRefreshDelay(
 
 export async function loadDemoSession(
   forceRefresh = false,
+  signal?: AbortSignal,
 ): Promise<DemoSession> {
   const response = await fetch(
     forceRefresh ? "/api/demo-session?refresh=1" : "/api/demo-session",
     {
       credentials: "same-origin",
       cache: "no-store",
+      signal,
     },
   );
   if (!response.ok) throw new Error("demo session request failed");
