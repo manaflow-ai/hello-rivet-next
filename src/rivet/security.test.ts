@@ -67,10 +67,13 @@ describe("demo session security", () => {
   });
 
   test("stops oversized GET bodies without a content length", async () => {
+    // Fetch rejects GET bodies, but a proxy can forward one. Use a real body
+    // stream and model the forwarded method after constructing the request.
     const request = new Request("https://demo.test/api/rivet/metadata", {
-      method: "GET",
+      method: "POST",
       body: "x".repeat(16 * 1024 + 1),
     });
+    Object.defineProperty(request, "method", { value: "GET" });
 
     expect(request.headers.get("content-length")).toBeNull();
     expect(await requestBodyExceedsLimit(request)).toBe(true);
