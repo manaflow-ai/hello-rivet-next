@@ -74,12 +74,15 @@ export class FixedWindowRateLimiter {
 
   consume(key: string, now = Date.now()): RateLimitResult {
     const existing = this.entries.get(key);
-    const expired =
-      existing &&
-      (now < existing.startedAt || now - existing.startedAt >= this.windowMs);
+    const expired = existing ? this.isExpired(existing, now) : false;
 
     if (!existing || expired) {
-      this.evictIfNeeded();
+      if (!this.evictExpired(now)) {
+        return {
+          allowed: false,
+          retryAfterSeconds: this.retryAfterSeconds(now),
+        };
+      }
       this.entries.set(key, { startedAt: now, count: 1 });
       return { allowed: true, retryAfterSeconds: 0 };
     }
@@ -99,10 +102,29 @@ export class FixedWindowRateLimiter {
     return { allowed: true, retryAfterSeconds: 0 };
   }
 
-  private evictIfNeeded() {
-    if (this.entries.size < this.maxEntries) return;
-    const oldest = this.entries.keys().next().value;
-    if (oldest !== undefined) this.entries.delete(oldest);
+  private evictExpired(now: number): boolean {
+    for (const [key, entry] of this.entries) {
+      if (this.isExpired(entry, now)) this.entries.delete(key);
+    }
+    return this.entries.size < this.maxEntries;
+  }
+
+  private isExpired(
+    entry: { startedAt: number; count: number },
+    now: number,
+  ): boolean {
+    return (
+      now < entry.startedAt || now - entry.startedAt >= this.windowMs
+    );
+  }
+
+  private retryAfterSeconds(now: number): number {
+    let shortestWindow = this.windowMs;
+    for (const entry of this.entries.values()) {
+      const elapsed = Math.max(0, now - entry.startedAt);
+      shortestWindow = Math.min(shortestWindow, this.windowMs - elapsed);
+    }
+    return Math.max(1, Math.ceil(shortestWindow / 1_000));
   }
 }
 

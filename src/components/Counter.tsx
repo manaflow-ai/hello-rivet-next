@@ -18,7 +18,6 @@ const demoSessionCache = new DemoSessionCache(loadDemoSession);
 const SESSION_RETRY_DELAY_MS = 5_000;
 
 export function Counter() {
-    const [count, setCount] = useState(0);
     const [session, setSession] = useState<DemoSession | null>(null);
     const [sessionError, setSessionError] = useState<string | null>(null);
 
@@ -53,15 +52,19 @@ export function Counter() {
         };
     }, []);
 
-    useEffect(() => {
-        setCount(0);
-    }, [session?.sessionId]);
+    if (sessionError) return <p>{sessionError}</p>;
+    if (!session) return <p>Starting a private demo session...</p>;
 
+    return <CounterActor key={session.sessionId} session={session} />;
+}
+
+function CounterActor({ session }: { session: DemoSession }) {
+    const [count, setCount] = useState(0);
     const counter = useActor({
         name: "counter",
-        key: [session?.sessionId ?? "pending"],
-        params: session ? { sessionToken: session.sessionToken } : undefined,
-        enabled: session !== null,
+        key: [session.sessionId],
+        params: { sessionToken: session.sessionToken },
+        enabled: true,
     });
 
     counter.useEvent("newCount", (x: number) => setCount(x));
@@ -69,9 +72,6 @@ export function Counter() {
     const increment = async () => {
         if (counter.connection) await counter.connection.increment(1);
     };
-
-    if (sessionError) return <p>{sessionError}</p>;
-    if (!session) return <p>Starting a private demo session...</p>;
 
     return (
         <div className="flex flex-col items-center gap-4 p-8">
