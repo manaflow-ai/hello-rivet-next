@@ -4,11 +4,34 @@ import {
   FixedWindowRateLimiter,
   getConnectionSessionToken,
   issueDemoSession,
+  isExplicitLocalDevelopment,
   requestBodyExceedsLimit,
   verifyDemoSession,
 } from "./security";
 
 describe("demo session security", () => {
+  test("allows the development fallback only with an explicit local flag", () => {
+    expect(
+      isExplicitLocalDevelopment({
+        NODE_ENV: "development",
+        RIVET_DEMO_ALLOW_INSECURE_LOCAL: "1",
+      }),
+    ).toBe(true);
+    expect(
+      isExplicitLocalDevelopment({
+        NODE_ENV: "preview",
+        RIVET_DEMO_ALLOW_INSECURE_LOCAL: "1",
+      }),
+    ).toBe(false);
+    expect(
+      isExplicitLocalDevelopment({
+        NODE_ENV: "development",
+        VERCEL: "1",
+        RIVET_DEMO_ALLOW_INSECURE_LOCAL: "1",
+      }),
+    ).toBe(false);
+  });
+
   test("issues a signed session and rejects tampering or expiry", () => {
     const now = Date.parse("2026-09-01T00:00:00Z");
     const session = issueDemoSession(now);
