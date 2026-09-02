@@ -113,4 +113,19 @@ describe("demo session security", () => {
     });
     expect(limiter.consume("session", 1_001).allowed).toBe(true);
   });
+
+  test("does not evict an active session bucket when full", () => {
+    const limiter = new FixedWindowRateLimiter(1, 1_000, 1);
+
+    expect(limiter.consume("first", 0).allowed).toBe(true);
+    expect(limiter.consume("second", 1)).toMatchObject({
+      allowed: false,
+      retryAfterSeconds: 1,
+    });
+    expect(limiter.consume("first", 2)).toMatchObject({
+      allowed: false,
+      retryAfterSeconds: 1,
+    });
+    expect(limiter.consume("first", 1_000).allowed).toBe(true);
+  });
 });
