@@ -145,6 +145,9 @@ async function validateRoutePolicy(
 function isCurrentCounterRequest(body: unknown, sessionId: string): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const record = body as Record<string, unknown>;
+
+  // Rivet's manager API serializes the client key `[sessionId]` as this
+  // single string before it sends the PUT or POST body.
   return record.name === "counter" && record.key === sessionId;
 }
 

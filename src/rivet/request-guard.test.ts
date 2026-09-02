@@ -57,6 +57,29 @@ describe("Rivet request guard", () => {
     expect(denied.status).toBe(403);
   });
 
+  test("accepts only Rivet's serialized session actor key", async () => {
+    const session = issueDemoSession();
+    const request = (key: unknown) =>
+      new Request("https://demo.test/api/rivet/actors", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          cookie: `rivet_demo_session=${session.token}`,
+        },
+        body: JSON.stringify({ name: "counter", key }),
+      });
+    const next = () => new Response("ok", { status: 200 });
+
+    expect(
+      (await guardRivetRequest(request(session.id), ["actors"], next))
+        .status,
+    ).toBe(200);
+    expect(
+      (await guardRivetRequest(request([session.id]), ["actors"], next))
+        .status,
+    ).toBe(403);
+  });
+
   test("returns 429 when a session exceeds the request budget", async () => {
     const session = issueDemoSession();
     const limiter = new FixedWindowRateLimiter(1, 60_000, 4);
