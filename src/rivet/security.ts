@@ -36,6 +36,12 @@ const TOKEN_VERSION = "v1";
 const DEVELOPMENT_SECRET =
   "hello-rivet-next-development-secret-do-not-use-in-production";
 
+interface RuntimeEnvironment {
+  NODE_ENV?: string;
+  VERCEL?: string;
+  RIVET_DEMO_ALLOW_INSECURE_LOCAL?: string;
+}
+
 export interface DemoSession {
   id: string;
   token: string;
@@ -351,10 +357,20 @@ function getSessionSecret(): string {
     return configured;
   }
 
-  if (process.env.NODE_ENV !== "production") return DEVELOPMENT_SECRET;
+  if (isExplicitLocalDevelopment(process.env)) return DEVELOPMENT_SECRET;
 
   throw new Error(
-    "RIVET_DEMO_SESSION_SECRET is required in production; generate one with `openssl rand -base64 32`",
+    "RIVET_DEMO_SESSION_SECRET is required outside local development; generate one with `openssl rand -base64 32`",
+  );
+}
+
+export function isExplicitLocalDevelopment(
+  environment: RuntimeEnvironment = process.env,
+): boolean {
+  return (
+    environment.NODE_ENV === "development" &&
+    environment.VERCEL !== "1" &&
+    environment.RIVET_DEMO_ALLOW_INSECURE_LOCAL === "1"
   );
 }
 

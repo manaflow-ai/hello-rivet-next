@@ -53,6 +53,10 @@ export function Counter() {
         };
     }, []);
 
+    useEffect(() => {
+        setCount(0);
+    }, [session?.sessionId]);
+
     const counter = useActor({
         name: "counter",
         key: [session?.sessionId ?? "pending"],

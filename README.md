@@ -25,8 +25,11 @@ in every deployed environment. For example:
 openssl rand -base64 32
 ```
 
-Production fails closed when this variable is missing or too short. Local
-development and tests use a clearly marked development-only fallback. The
+Every environment outside explicitly opted-in local development fails closed
+when this variable is missing or too short. To run the example locally without
+creating a secret, set `RIVET_DEMO_ALLOW_INSECURE_LOCAL=1`; this fallback is
+accepted only with `NODE_ENV=development` and is disabled on Vercel. Tests
+inject a separate secret. The
 `/api/rivet/start` control-plane callback also fails closed in production
 unless `RIVET_ENDPOINT` includes a backend token or `RIVET_TOKEN` is set.
 
