@@ -1,4 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# hello-rivet-next
+
+A small Next.js and RivetKit counter example.
+
+## Security contract
+
+The browser receives a signed, short-lived demo session from
+`/api/demo-session`. The session token is used as Rivet connection data, and
+the actor key is bound to the session ID. Requests without a valid signature,
+or requests that try to use another session's actor, are rejected.
+
+The counter accepts only positive safe integers from `1` through `10`. Each
+session can make at most 30 increments per minute, and the counter stops at
+1,000,000. The Next.js route rejects request bodies larger than 16 KiB and
+allows at most 120 protected requests per minute per session in one server
+process.
+
+Set `RIVET_DEMO_SESSION_SECRET` to a random value with at least 32 characters
+in every deployed environment. For example:
+
+```sh
+openssl rand -base64 32
+```
+
+Production fails closed when this variable is missing or too short. Local
+development and tests use a clearly marked development-only fallback. The
+`/api/rivet/start` control-plane callback also fails closed in production
+unless `RIVET_ENDPOINT` includes a backend token or `RIVET_TOKEN` is set.
+
+Rivet Cloud can redirect browser manager requests from the Next.js route to
+its public endpoint. The actor's `onBeforeConnect` and `createConnState` hooks
+therefore verify the signed session again and bind it to the actor key. The
+Next.js request limiter is process-local, and Rivet's publishable token and
+control plane remain separate trust boundaries. Add distributed platform
+limits and a real identity provider before using this example as an
+application backend.
 
 ## Getting Started
 
