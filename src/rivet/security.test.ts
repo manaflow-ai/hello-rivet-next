@@ -66,6 +66,16 @@ describe("demo session security", () => {
     expect(await requestBodyExceedsLimit(large)).toBe(true);
   });
 
+  test("stops oversized GET bodies without a content length", async () => {
+    const request = new Request("https://demo.test/api/rivet/metadata", {
+      method: "GET",
+      body: "x".repeat(16 * 1024 + 1),
+    });
+
+    expect(request.headers.get("content-length")).toBeNull();
+    expect(await requestBodyExceedsLimit(request)).toBe(true);
+  });
+
   test("keeps the request limiter bounded and returns a retry window", () => {
     const limiter = new FixedWindowRateLimiter(2, 1_000, 1);
 

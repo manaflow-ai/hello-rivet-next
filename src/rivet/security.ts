@@ -286,9 +286,7 @@ export async function requestBodyExceedsLimit(
     }
   }
 
-  if (!request.body || request.method === "GET" || request.method === "HEAD") {
-    return false;
-  }
+  if (!request.body) return false;
 
   try {
     const reader = request.clone().body?.getReader();
