@@ -28,6 +28,30 @@ describe("demo session route", () => {
     expect(second.headers.get("set-cookie")).toBeNull();
   });
 
+  test("rotates a valid session when refresh is requested", async () => {
+    const GET = createDemoSessionHandler({
+      issuerLimiter: new FixedWindowRateLimiter(10, 60_000, 10),
+      globalLimiter: new FixedWindowRateLimiter(10, 60_000, 1),
+    });
+    const first = GET(new Request("https://demo.test/api/demo-session"));
+    const firstBody = await first.json();
+    const cookie = first.headers.get("set-cookie")?.split(";")[0] ?? "";
+
+    const refreshed = GET(
+      new Request("https://demo.test/api/demo-session?refresh=1", {
+        headers: { cookie },
+      }),
+    );
+    const refreshedBody = await refreshed.json();
+
+    expect(refreshed.status).toBe(200);
+    expect(refreshedBody.sessionId).not.toBe(firstBody.sessionId);
+    expect(refreshedBody.sessionToken).not.toBe(firstBody.sessionToken);
+    expect(refreshed.headers.get("set-cookie")).toContain(
+      `${SESSION_COOKIE_NAME}=`,
+    );
+  });
+
   test("limits new sessions from the same requester", () => {
     const GET = createDemoSessionHandler({
       issuerLimiter: new FixedWindowRateLimiter(1, 60_000, 10),

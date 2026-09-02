@@ -58,16 +58,31 @@ describe("demo session cache", () => {
     expect((await cache.get()).sessionId).toBe("retry");
     expect(loads).toBe(2);
   });
+
+  test("can force a renewal before the cached session expires", async () => {
+    const forceRefreshes: boolean[] = [];
+    const cache = new DemoSessionCache(async (forceRefresh = false) => {
+      forceRefreshes.push(forceRefresh);
+      return makeSession(
+        forceRefresh ? "renewed" : "initial",
+        Math.floor(Date.now() / 1_000) + 60,
+      );
+    });
+
+    expect((await cache.get()).sessionId).toBe("initial");
+    expect((await cache.get(true)).sessionId).toBe("renewed");
+    expect(forceRefreshes).toEqual([false, true]);
+  });
 });
 
 describe("demo session response", () => {
   test("requires a future expiry and schedules refresh after it", () => {
     const now = 1_000_000;
-    const session = makeSession("valid", 1_010);
+    const session = makeSession("valid", 1_120);
 
     expect(isDemoSession(session, now)).toBe(true);
     expect(isDemoSession({ ...session, expiresAt: 1_000 }, now)).toBe(false);
-    expect(sessionRefreshDelay(session, now)).toBe(11_000);
-    expect(sessionRefreshDelay(session, 1_010_000)).toBe(1_000);
+    expect(sessionRefreshDelay(session, now)).toBe(60_000);
+    expect(sessionRefreshDelay(session, 1_119_500)).toBe(1_000);
   });
 });
