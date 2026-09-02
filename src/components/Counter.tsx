@@ -3,17 +3,19 @@
 import { createRivetKit } from "@rivetkit/next-js/client";
 import type { registry } from "@/rivet/registry";
 import { useEffect, useState } from "react";
+import {
+    DemoSessionCache,
+    loadDemoSession,
+    sessionRefreshDelay,
+    type DemoSession,
+} from "./demo-session";
 
 export const { useActor } = createRivetKit<typeof registry>(
     process.env.NEXT_PUBLIC_RIVET_ENDPOINT,
 );
 
-interface DemoSession {
-    sessionId: string;
-    sessionToken: string;
-}
-
-let sessionRequest: Promise<DemoSession> | undefined;
+const demoSessionCache = new DemoSessionCache(loadDemoSession);
+const SESSION_RETRY_DELAY_MS = 5_000;
 
 export function Counter() {
     const [count, setCount] = useState(0);
@@ -21,14 +23,34 @@ export function Counter() {
     const [sessionError, setSessionError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!sessionRequest) sessionRequest = loadDemoSession();
+        let active = true;
+        let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-        sessionRequest
-            .then(setSession)
-            .catch(() => {
-                sessionRequest = undefined;
-                setSessionError("Unable to start the demo session.");
-            });
+        const scheduleRefresh = (delay: number) => {
+            refreshTimer = setTimeout(refresh, delay);
+        };
+
+        const refresh = () => {
+            void demoSessionCache
+                .get()
+                .then((nextSession) => {
+                    if (!active) return;
+                    setSessionError(null);
+                    setSession(nextSession);
+                    scheduleRefresh(sessionRefreshDelay(nextSession));
+                })
+                .catch(() => {
+                    if (!active) return;
+                    setSessionError("Unable to start the demo session.");
+                    scheduleRefresh(SESSION_RETRY_DELAY_MS);
+                });
+        };
+
+        refresh();
+        return () => {
+            active = false;
+            if (refreshTimer) clearTimeout(refreshTimer);
+        };
     }, []);
 
     const counter = useActor({
@@ -57,31 +79,5 @@ export function Counter() {
                 Increment
             </button>
         </div>
-    );
-}
-
-async function loadDemoSession(): Promise<DemoSession> {
-    const response = await fetch("/api/demo-session", {
-        credentials: "same-origin",
-        cache: "no-store",
-    });
-    if (!response.ok) throw new Error("demo session request failed");
-
-    const value: unknown = await response.json();
-    if (!isDemoSession(value)) throw new Error("invalid demo session response");
-    return value;
-}
-
-function isDemoSession(value: unknown): value is DemoSession {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-
-    const record = value as Record<string, unknown>;
-    return (
-        typeof record.sessionId === "string" &&
-        typeof record.sessionToken === "string" &&
-        record.sessionId.length > 0 &&
-        record.sessionToken.length > 0
     );
 }
