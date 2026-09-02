@@ -2,27 +2,79 @@
 
 import { createRivetKit } from "@rivetkit/next-js/client";
 import type { registry } from "@/rivet/registry";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+    DemoSessionCache,
+    loadDemoSession,
+    sessionRefreshDelay,
+    type DemoSession,
+} from "./demo-session";
 
 export const { useActor } = createRivetKit<typeof registry>(
-    process.env.NEXT_PUBLIC_RIVET_ENDPOINT!,
+    process.env.NEXT_PUBLIC_RIVET_ENDPOINT,
 );
 
-export function Counter() {
-    const [count, setCount] = useState(0);
+const demoSessionCache = new DemoSessionCache(loadDemoSession);
+const SESSION_RETRY_DELAY_MS = 5_000;
 
-    // Get or create a counter actor for the key "my-counter"
+export function Counter() {
+    const [session, setSession] = useState<DemoSession | null>(null);
+    const [sessionError, setSessionError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const scheduleRefresh = (delay: number, forceRefresh: boolean) => {
+            refreshTimer = setTimeout(() => refresh(forceRefresh), delay);
+        };
+
+        let hasSession = false;
+        const refresh = (forceRefresh = false) => {
+            void demoSessionCache
+                .get(forceRefresh)
+                .then((nextSession) => {
+                    if (!active) return;
+                    hasSession = true;
+                    setSessionError(null);
+                    setSession(nextSession);
+                    scheduleRefresh(sessionRefreshDelay(nextSession), true);
+                })
+                .catch(() => {
+                    if (!active) return;
+                    if (!hasSession) {
+                        setSessionError("Unable to start the demo session.");
+                    }
+                    scheduleRefresh(SESSION_RETRY_DELAY_MS, false);
+                });
+        };
+
+        refresh();
+        return () => {
+            active = false;
+            if (refreshTimer) clearTimeout(refreshTimer);
+        };
+    }, []);
+
+    if (sessionError) return <p>{sessionError}</p>;
+    if (!session) return <p>Starting a private demo session...</p>;
+
+    return <CounterActor key={session.sessionId} session={session} />;
+}
+
+function CounterActor({ session }: { session: DemoSession }) {
+    const [count, setCount] = useState(0);
     const counter = useActor({
         name: "counter",
-        key: ["my-counter"]
+        key: [session.sessionId],
+        params: { sessionToken: session.sessionToken },
+        enabled: true,
     });
 
-    // Listen to realtime events
     counter.useEvent("newCount", (x: number) => setCount(x));
 
     const increment = async () => {
-        // Call actions
-        await counter.connection?.increment(1);
+        if (counter.connection) await counter.connection.increment(1);
     };
 
     return (

@@ -1,16 +1,10 @@
-import { actor, setup } from "rivetkit";
+import { setup } from "rivetkit";
+import { counter } from "./counter";
 
-export const counter = actor({
-    state: { count: 0 },
-    actions: {
-        increment: (c, x: number) => {
-            c.state.count += x;
-            c.broadcast("newCount", c.state.count);
-            return c.state.count;
-        },
-    },
-});
+export { counter } from "./counter";
 
 export const registry = setup({
     use: { counter },
+    maxIncomingMessageSize: 16 * 1024,
+    maxOutgoingMessageSize: 64 * 1024,
 });
