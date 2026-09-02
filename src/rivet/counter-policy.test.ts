@@ -73,7 +73,11 @@ describe("counter policy", () => {
       assertCounterConnectionActive(active, now + 61 * 1_000),
     ).toThrow("Unauthorized");
 
-    const increment = counter.config.actions.increment as unknown as (
+    const actions = counter.config.actions;
+    if (!actions || typeof actions.increment !== "function") {
+      throw new Error("counter increment action is missing");
+    }
+    const increment = actions.increment as unknown as (
       context: {
         conn: { state: typeof active };
         state: CounterState;
