@@ -1,0 +1,88 @@
+import { describe, expect, test } from "bun:test";
+import { UserError } from "rivetkit";
+import { counter } from "./counter";
+import {
+  ACTION_WINDOW_MS,
+  MAX_ACTIONS_PER_WINDOW,
+  authenticateCounterConnection,
+  applyIncrement,
+  parseIncrement,
+  type CounterState,
+} from "./counter-policy";
+import { issueDemoSession } from "./security";
+
+describe("counter policy", () => {
+  test("binds actor access to the signed session key", () => {
+    const session = issueDemoSession();
+
+    expect(
+      authenticateCounterConnection([session.id], {
+        sessionToken: session.token,
+      }),
+    ).toEqual({ sessionId: session.id });
+    expect(() =>
+      authenticateCounterConnection(["another-session"], {
+        sessionToken: session.token,
+      }),
+    ).toThrow("Unauthorized");
+    expect(() => authenticateCounterConnection([session.id], {})).toThrow(
+      "Unauthorized",
+    );
+  });
+
+  test("rejects direct actor connections without a valid session", async () => {
+    const session = issueDemoSession();
+    const context = { key: [session.id] };
+    const onBeforeConnect = counter.config.onBeforeConnect as unknown as Hook;
+    if (!("createConnState" in counter.config)) {
+      throw new Error("counter connection state hook is missing");
+    }
+    const createConnState = counter.config.createConnState as unknown as Hook;
+    const connect = (params: unknown) =>
+      Promise.resolve().then(() => onBeforeConnect(context, params));
+
+    await expect(connect({})).rejects.toThrow("Unauthorized");
+    await expect(
+      connect({ sessionToken: `${session.token}x` }),
+    ).rejects.toThrow("Unauthorized");
+    await expect(
+      connect({ sessionToken: session.token }),
+    ).resolves.toBeUndefined();
+    await expect(
+      Promise.resolve().then(() => createConnState(context, {
+        sessionToken: session.token,
+      })),
+    ).resolves.toEqual({ sessionId: session.id });
+  });
+
+  test("accepts only small positive safe integers", () => {
+    expect(parseIncrement(1)).toBe(1);
+    expect(parseIncrement(10)).toBe(10);
+    for (const value of [0, -1, 11, 1.5, Number.NaN, Infinity, "1"]) {
+      expect(() => parseIncrement(value)).toThrow(UserError);
+    }
+  });
+
+  test("enforces a durable per-session rate limit and count bound", () => {
+    const state: CounterState = {
+      count: 0,
+      windowStartedAt: 1_000,
+      actionsInWindow: 0,
+    };
+
+    expect(applyIncrement(state, 3, 1_001)).toBe(3);
+    expect(state.actionsInWindow).toBe(1);
+    for (let i = 1; i < MAX_ACTIONS_PER_WINDOW; i += 1) {
+      applyIncrement(state, 1, 1_001);
+    }
+    expect(() => applyIncrement(state, 1, 1_001)).toThrow("Too many increments");
+    expect(applyIncrement(state, 1, 1_000 + ACTION_WINDOW_MS)).toBe(
+      MAX_ACTIONS_PER_WINDOW + 3,
+    );
+  });
+});
+
+type Hook = (
+  context: { key: readonly string[] },
+  params: unknown,
+) => unknown;
