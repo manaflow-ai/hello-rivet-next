@@ -1,5 +1,6 @@
 import { actor } from "rivetkit";
 import {
+  assertCounterConnectionActive,
   authenticateCounterConnection,
   applyIncrement,
   type CounterConnectionParams,
@@ -22,6 +23,7 @@ export const counter = actor({
   ): CounterConnectionState => authenticateCounterConnection(c.key, params),
   actions: {
     increment: (c, amount: unknown) => {
+      assertCounterConnectionActive(c.conn.state);
       const count = applyIncrement(c.state, amount);
       c.broadcast("newCount", count);
       return count;

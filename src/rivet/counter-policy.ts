@@ -18,6 +18,7 @@ export interface CounterConnectionParams {
 
 export interface CounterConnectionState {
   sessionId: string;
+  expiresAt: number;
 }
 
 export function authenticateCounterConnection(
@@ -45,7 +46,21 @@ export function authenticateCounterConnection(
     throw unauthorized();
   }
 
-  return { sessionId: session.id };
+  return { sessionId: session.id, expiresAt: session.expiresAt };
+}
+
+export function assertCounterConnectionActive(
+  connection: CounterConnectionState,
+  now = Date.now(),
+): void {
+  if (
+    !Number.isSafeInteger(now) ||
+    now < 0 ||
+    !Number.isSafeInteger(connection.expiresAt) ||
+    connection.expiresAt <= Math.floor(now / 1_000)
+  ) {
+    throw unauthorized();
+  }
 }
 
 export function applyIncrement(
