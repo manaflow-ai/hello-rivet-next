@@ -41,7 +41,6 @@ function configuredRivetToken(): string | undefined {
 export const GET = wrap("GET");
 export const POST = wrap("POST");
 export const PUT = wrap("PUT");
-export const DELETE = wrap("DELETE");
 export const PATCH = wrap("PATCH");
 export const HEAD = wrap("HEAD");
 export const OPTIONS = wrap("OPTIONS");
