@@ -3,6 +3,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+import { isIP } from "node:net";
 
 export const SESSION_COOKIE_NAME = "rivet_demo_session";
 export const SESSION_TOKEN_PARAM = "sessionToken";
@@ -13,6 +14,18 @@ export const RIVET_REQUEST_LIMIT = {
   maxRequests: 120,
   windowMs: 60_000,
   maxEntries: 2_048,
+} as const;
+
+export const DEMO_SESSION_ISSUER_LIMIT = {
+  maxRequests: 10,
+  windowMs: 60_000,
+  maxEntries: 2_048,
+} as const;
+
+export const DEMO_SESSION_GLOBAL_LIMIT = {
+  maxRequests: 100,
+  windowMs: 60_000,
+  maxEntries: 1,
 } as const;
 
 const SESSION_ID_BYTES = 18;
@@ -92,6 +105,47 @@ export const rivetRequestLimiter = new FixedWindowRateLimiter(
   RIVET_REQUEST_LIMIT.windowMs,
   RIVET_REQUEST_LIMIT.maxEntries,
 );
+
+export const demoSessionIssuerLimiter = new FixedWindowRateLimiter(
+  DEMO_SESSION_ISSUER_LIMIT.maxRequests,
+  DEMO_SESSION_ISSUER_LIMIT.windowMs,
+  DEMO_SESSION_ISSUER_LIMIT.maxEntries,
+);
+
+export const demoSessionGlobalLimiter = new FixedWindowRateLimiter(
+  DEMO_SESSION_GLOBAL_LIMIT.maxRequests,
+  DEMO_SESSION_GLOBAL_LIMIT.windowMs,
+  DEMO_SESSION_GLOBAL_LIMIT.maxEntries,
+);
+
+export interface DemoSessionIssueLimitOptions {
+  issuerLimiter?: FixedWindowRateLimiter;
+  globalLimiter?: FixedWindowRateLimiter;
+  now?: number;
+  trustProxyHeaders?: boolean;
+}
+
+/**
+ * Limits anonymous session creation by requester and across this process.
+ * Vercel overwrites its forwarded IP header. Other deployments share one
+ * fail-closed requester bucket unless they add an equivalent trusted proxy.
+ */
+export function consumeDemoSessionIssueLimit(
+  request: Request,
+  options: DemoSessionIssueLimitOptions = {},
+): RateLimitResult {
+  const issuerLimiter = options.issuerLimiter ?? demoSessionIssuerLimiter;
+  const globalLimiter = options.globalLimiter ?? demoSessionGlobalLimiter;
+  const now = options.now ?? Date.now();
+  const issuerKey = getDemoSessionIssuerKey(
+    request,
+    options.trustProxyHeaders ?? process.env.VERCEL === "1",
+  );
+  const issuerResult = issuerLimiter.consume(issuerKey, now);
+  if (!issuerResult.allowed) return issuerResult;
+
+  return globalLimiter.consume("all-issuers", now);
+}
 
 export function issueDemoSession(now = Date.now()): DemoSession {
   const issuedAt = Math.floor(now / 1_000);
@@ -313,4 +367,19 @@ export function timingSafeStringEqual(left: string, right: string): boolean {
     leftBytes.length === rightBytes.length &&
     timingSafeEqual(leftBytes, rightBytes)
   );
+}
+
+function getDemoSessionIssuerKey(
+  request: Request,
+  trustProxyHeaders: boolean,
+): string {
+  if (!trustProxyHeaders) return "untrusted-proxy";
+
+  const forwardedFor =
+    request.headers.get("x-vercel-forwarded-for") ??
+    request.headers.get("x-forwarded-for");
+  const clientIp = forwardedFor?.split(",", 1)[0]?.trim();
+  if (!clientIp || !isIP(clientIp)) return "unknown-requester";
+
+  return `requester.${sign(`requester.${clientIp}`)}`;
 }
