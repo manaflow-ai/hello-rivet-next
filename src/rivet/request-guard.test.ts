@@ -100,33 +100,36 @@ describe("Rivet request guard", () => {
 
   test("authenticates the Rivet control-plane start request", async () => {
     const next = () => new Response("ok", { status: 200 });
-    const request = (token?: string) =>
+    const request = (method: string, token?: string) =>
       new Request("https://demo.test/api/rivet/start", {
+        method,
         headers: token ? { "x-rivet-token": token } : undefined,
       });
 
-    expect(
-      (
-        await guardRivetRequest(request(), ["start"], next, {
-          requireStartToken: true,
-        })
-      ).status,
-    ).toBe(503);
-    expect(
-      (
-        await guardRivetRequest(request("wrong"), ["start"], next, {
-          expectedStartToken: "expected",
-          requireStartToken: true,
-        })
-      ).status,
-    ).toBe(401);
-    expect(
-      (
-        await guardRivetRequest(request("expected"), ["start"], next, {
-          expectedStartToken: "expected",
-          requireStartToken: true,
-        })
-      ).status,
-    ).toBe(200);
+    for (const method of ["GET", "POST", "PUT", "PATCH"]) {
+      expect(
+        (
+          await guardRivetRequest(request(method), ["start"], next, {
+            requireStartToken: true,
+          })
+        ).status,
+      ).toBe(503);
+      expect(
+        (
+          await guardRivetRequest(request(method, "wrong"), ["start"], next, {
+            expectedStartToken: "expected",
+            requireStartToken: true,
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await guardRivetRequest(request(method, "expected"), ["start"], next, {
+            expectedStartToken: "expected",
+            requireStartToken: true,
+          })
+        ).status,
+      ).toBe(200);
+    }
   });
 });
