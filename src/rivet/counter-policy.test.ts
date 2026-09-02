@@ -4,6 +4,7 @@ import { counter } from "./counter";
 import {
   ACTION_WINDOW_MS,
   MAX_ACTIONS_PER_WINDOW,
+  assertCounterConnectionActive,
   authenticateCounterConnection,
   applyIncrement,
   parseIncrement,
@@ -19,7 +20,7 @@ describe("counter policy", () => {
       authenticateCounterConnection([session.id], {
         sessionToken: session.token,
       }),
-    ).toEqual({ sessionId: session.id });
+    ).toEqual({ sessionId: session.id, expiresAt: session.expiresAt });
     expect(() =>
       authenticateCounterConnection(["another-session"], {
         sessionToken: session.token,
@@ -49,10 +50,48 @@ describe("counter policy", () => {
       connect({ sessionToken: session.token }),
     ).resolves.toBeUndefined();
     await expect(
-      Promise.resolve().then(() => createConnState(context, {
-        sessionToken: session.token,
-      })),
-    ).resolves.toEqual({ sessionId: session.id });
+      Promise.resolve().then(() =>
+        createConnState(context, {
+          sessionToken: session.token,
+        }),
+      ),
+    ).resolves.toEqual({
+      sessionId: session.id,
+      expiresAt: session.expiresAt,
+    });
+  });
+
+  test("rejects actions after an established session expires", () => {
+    const now = Date.parse("2026-09-01T00:00:00Z");
+    const active = {
+      sessionId: "session",
+      expiresAt: Math.floor(now / 1_000) + 60,
+    };
+
+    expect(() => assertCounterConnectionActive(active, now)).not.toThrow();
+    expect(() =>
+      assertCounterConnectionActive(active, now + 61 * 1_000),
+    ).toThrow("Unauthorized");
+
+    const increment = counter.config.actions.increment as unknown as (
+      context: {
+        conn: { state: typeof active };
+        state: CounterState;
+        broadcast: () => void;
+      },
+      amount: unknown,
+    ) => number;
+    const context = {
+      conn: {
+        state: {
+          ...active,
+          expiresAt: Math.floor(Date.now() / 1_000) - 1,
+        },
+      },
+      state: { count: 0, windowStartedAt: 0, actionsInWindow: 0 },
+      broadcast: () => {},
+    };
+    expect(() => increment(context, 1)).toThrow("Unauthorized");
   });
 
   test("accepts only small positive safe integers", () => {
