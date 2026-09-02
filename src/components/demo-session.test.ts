@@ -53,6 +53,7 @@ describe("demo session cache", () => {
 
     const first = cache.get();
     expect(cache.get()).toBe(first);
+    await Promise.resolve();
     rejectLoad!(new Error("temporary failure"));
     await expect(first).rejects.toThrow("temporary failure");
     expect((await cache.get()).sessionId).toBe("retry");
@@ -72,6 +73,31 @@ describe("demo session cache", () => {
     expect((await cache.get()).sessionId).toBe("initial");
     expect((await cache.get(true)).sessionId).toBe("renewed");
     expect(forceRefreshes).toEqual([false, true]);
+  });
+
+  test("abandons a hung load and allows a later retry", async () => {
+    let loads = 0;
+    let aborted = false;
+    const cache = new DemoSessionCache(
+      (_forceRefresh, signal) => {
+        loads += 1;
+        if (loads === 1) {
+          signal?.addEventListener("abort", () => {
+            aborted = true;
+          });
+          return new Promise<DemoSession>(() => {});
+        }
+        return Promise.resolve(
+          makeSession("after-timeout", Math.floor(Date.now() / 1_000) + 60),
+        );
+      },
+      Date.now,
+      5,
+    );
+
+    await expect(cache.get()).rejects.toThrow("timed out");
+    expect(aborted).toBe(true);
+    expect((await cache.get()).sessionId).toBe("after-timeout");
   });
 });
 

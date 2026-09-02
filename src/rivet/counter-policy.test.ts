@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { UserError } from "rivetkit";
-import { counter } from "./counter";
+import { counter, scheduleCounterConnectionExpiry } from "./counter";
 import {
   ACTION_WINDOW_MS,
   MAX_ACTIONS_PER_WINDOW,
@@ -96,6 +96,36 @@ describe("counter policy", () => {
       broadcast: () => {},
     };
     expect(() => increment(context, 1)).toThrow("Unauthorized");
+  });
+
+  test("disconnects an established connection when its session expires", () => {
+    let now = 1_000_000;
+    let callback: (() => void) | undefined;
+    let scheduledDelay = -1;
+    let disconnectReason: string | undefined;
+    const connection = {
+      state: { sessionId: "session", expiresAt: 1_001 },
+      disconnect: async (reason?: string) => {
+        disconnectReason = reason;
+      },
+    };
+    const schedule = (next: () => void, delay: number) => {
+      callback = next;
+      scheduledDelay = delay;
+      return setTimeout(() => {}, 60_000);
+    };
+
+    const cancel = scheduleCounterConnectionExpiry(
+      connection,
+      () => now,
+      schedule,
+    );
+    expect(scheduledDelay).toBe(1_000);
+
+    now = 1_001_000;
+    callback!();
+    expect(disconnectReason).toBe("Demo session expired");
+    cancel();
   });
 
   test("accepts only small positive safe integers", () => {
