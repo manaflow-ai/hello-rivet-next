@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createDemoSessionHandler, GET } from "./route";
+import { GET } from "./route";
+import { createDemoSessionHandler } from "./handler";
 import {
   FixedWindowRateLimiter,
   SESSION_COOKIE_NAME,
