@@ -31,7 +31,7 @@ export async function guardRivetRequest(
   }
 
   const path = normalizePath(pathSegments);
-  if (path === "/start" && request.method === "GET") {
+  if (path === "/start" && request.method !== "OPTIONS") {
     return guardStartRequest(request, next, options);
   }
   if (isPublicControlPath(path, request.method)) return next();
