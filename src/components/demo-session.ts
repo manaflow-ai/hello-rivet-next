@@ -4,10 +4,11 @@ export interface DemoSession {
   expiresAt: number;
 }
 
-export type DemoSessionLoader = () => Promise<DemoSession>;
+export type DemoSessionLoader = (forceRefresh?: boolean) => Promise<DemoSession>;
 export type Clock = () => number;
 
-const SESSION_REFRESH_DELAY_MS = 1_000;
+const SESSION_REFRESH_MARGIN_MS = 60_000;
+const SESSION_REFRESH_MIN_DELAY_MS = 1_000;
 
 /**
  * Shares one session request while replacing the cached session after expiry.
@@ -23,13 +24,17 @@ export class DemoSessionCache {
     private readonly now: Clock = Date.now,
   ) {}
 
-  get(): Promise<DemoSession> {
-    if (this.cached && this.cached.expiresAt * 1_000 > this.now()) {
+  get(forceRefresh = false): Promise<DemoSession> {
+    if (
+      !forceRefresh &&
+      this.cached &&
+      this.cached.expiresAt * 1_000 > this.now()
+    ) {
       return Promise.resolve(this.cached);
     }
     if (this.inFlight) return this.inFlight;
 
-    const request = this.load().then((session) => {
+    const request = this.load(forceRefresh).then((session) => {
       this.cached = session;
       return session;
     });
@@ -51,16 +56,21 @@ export function sessionRefreshDelay(
   now = Date.now(),
 ): number {
   return Math.max(
-    SESSION_REFRESH_DELAY_MS,
-    session.expiresAt * 1_000 - now + SESSION_REFRESH_DELAY_MS,
+    SESSION_REFRESH_MIN_DELAY_MS,
+    session.expiresAt * 1_000 - now - SESSION_REFRESH_MARGIN_MS,
   );
 }
 
-export async function loadDemoSession(): Promise<DemoSession> {
-  const response = await fetch("/api/demo-session", {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
+export async function loadDemoSession(
+  forceRefresh = false,
+): Promise<DemoSession> {
+  const response = await fetch(
+    forceRefresh ? "/api/demo-session?refresh=1" : "/api/demo-session",
+    {
+      credentials: "same-origin",
+      cache: "no-store",
+    },
+  );
   if (!response.ok) throw new Error("demo session request failed");
 
   const value: unknown = await response.json();

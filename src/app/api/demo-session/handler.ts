@@ -32,11 +32,13 @@ function handleRequest(
   options: DemoSessionHandlerOptions,
 ): Response {
   try {
+    const forceRefresh =
+      new URL(request.url).searchParams.get("refresh") === "1";
     const existingToken = getSessionCookieToken(request);
     let session = existingToken ? verifySafely(existingToken) : null;
-    const shouldSetCookie = !session;
+    const shouldSetCookie = !session || forceRefresh;
 
-    if (!session) {
+    if (!session || forceRefresh) {
       const limit = consumeDemoSessionIssueLimit(request, options);
       if (!limit.allowed) return rateLimitedResponse(limit.retryAfterSeconds);
       session = issueDemoSession();

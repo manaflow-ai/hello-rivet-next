@@ -25,23 +25,27 @@ export function Counter() {
         let active = true;
         let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-        const scheduleRefresh = (delay: number) => {
-            refreshTimer = setTimeout(refresh, delay);
+        const scheduleRefresh = (delay: number, forceRefresh: boolean) => {
+            refreshTimer = setTimeout(() => refresh(forceRefresh), delay);
         };
 
-        const refresh = () => {
+        let hasSession = false;
+        const refresh = (forceRefresh = false) => {
             void demoSessionCache
-                .get()
+                .get(forceRefresh)
                 .then((nextSession) => {
                     if (!active) return;
+                    hasSession = true;
                     setSessionError(null);
                     setSession(nextSession);
-                    scheduleRefresh(sessionRefreshDelay(nextSession));
+                    scheduleRefresh(sessionRefreshDelay(nextSession), true);
                 })
                 .catch(() => {
                     if (!active) return;
-                    setSessionError("Unable to start the demo session.");
-                    scheduleRefresh(SESSION_RETRY_DELAY_MS);
+                    if (!hasSession) {
+                        setSessionError("Unable to start the demo session.");
+                    }
+                    scheduleRefresh(SESSION_RETRY_DELAY_MS, false);
                 });
         };
 
